@@ -21,7 +21,9 @@ def GJ_alpha(self):
 	# by: XX
 	# last modify:
 	# #############################################################
-	alpha = GJ[0,:] * self.Universe_one.iloc[i,:]
+	
+	这里我做一个改动，看其他地方能不能pull push
+	# alpha = GJ[0,:] * self.Universe_one.iloc[i,:]
 	return alpha 
 
 
