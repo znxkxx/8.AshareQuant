@@ -1,0 +1,10 @@
+
+#1.Mac 系统下的文件
+*.DS_Store
+
+
+# pdf 文件大多为资料
+*.pdf 
+
+# office文件
+*.doc*, *.xls*, *.ppt*
