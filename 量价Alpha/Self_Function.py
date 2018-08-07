@@ -68,11 +68,11 @@ class UserWrite(Execution):
         
     # -------------------------------------------
     # function 2: delay(x,d)
-    def _delay(self, data):
-        '''
-        这个函数直接用切片方式获取
-        '''
-        pass 
+    # def _delay(self, data, d):
+      #  '''
+      #  这个函数直接用切片方式获取
+      #  '''
+      #  return data[:-d,:]
     # -------------------------------------------
 
 
@@ -89,7 +89,10 @@ class UserWrite(Execution):
         for postion_i in range(data1.shape[1]):
             corr[0,postion_i] = np.corrcoef(data1[:,postion_i],data2[:,postion_i])[0,1] 
         return corr 
-            
+    # -------------------------------------------
+    
+    
+    # -------------------------------------------       
     # function 4: covariance()
     def _covariance(self, data1, data2):
         '''
@@ -104,7 +107,6 @@ class UserWrite(Execution):
         
     # -------------------------------------------
 
-    
     
     # -------------------------------------------    
     # function 5: scale(x,a=1)
@@ -126,10 +128,6 @@ class UserWrite(Execution):
     # -------------------------------------------
 
     
-    
-
-    
-    
     # -------------------------------------------    
     # function 6：delta(x,d)
     def _delta(self, data):
@@ -149,11 +147,13 @@ class UserWrite(Execution):
     # -------------------------------------------  
 
     
-    
     # -------------------------------------------
     # function 7:signedpower(x,a)
-    #  此函数直接用 x**a 计算即可
+    # def _signedpower(self, data, a):
+    #    return np.power(data, a)
 
+    # -------------------------------------------
+     
     
     # -------------------------------------------
     # function 8: decaylinear(x,d)
@@ -185,7 +185,6 @@ class UserWrite(Execution):
             
         return np.nansum(df_data.values* weight, axis = 0, keepdims = True)
     # -------------------------------------------
-    
     
     
     # -------------------------------------------        
@@ -252,6 +251,8 @@ class UserWrite(Execution):
     # -------------------------------------------   
     
     
+    # -------------------------------------------
+    # function 12: ts_argmin(x,d)
     def _ts_argmax(self, data):
         '''
         价格在过去d日内最大值发生的日期--改为距离今天的日期
@@ -265,7 +266,10 @@ class UserWrite(Execution):
         #对data_arrange进行nanargmax，选取除nan外的最大值
         argmax = np.nanargmax(data_arrange,axis = 0)
         return np.where(argmax ==0,np.nan,data.shape[0]-argmax).reshape(1,argmax.size)   
+    # -------------------------------------------
     
+    
+    # -------------------------------------------
     # function 13: ts_argmin(x,d)
     
     def _ts_argmin(self, data):
@@ -281,11 +285,11 @@ class UserWrite(Execution):
         #对data_arrange进行nanargmax，选取除nan外的最大值
         argmin = np.nanargmin(data_arrange,axis = 0)
         return np.where(argmin ==0,np.nan,data.shape[0]-argmin).reshape(1,argmin.size)     
+    # -------------------------------------------
     
     
     # -------------------------------------------    
     # function 14: ts_rank
-    
     def _ts_rank(self , data):
         '''
         对应Formularic 101 Alpha中的ts_rank(x)函数
@@ -306,10 +310,6 @@ class UserWrite(Execution):
     # -------------------------------------------
 
     
-
- 
-        
-    
     # -------------------------------------------    
     # function 15: sum(x,d)
     
@@ -320,7 +320,8 @@ class UserWrite(Execution):
         # 计算非空的天数
         non_missing_days = data.shape[0] - np.sum(np.isnan(data), axis = 0, keepdims = True)
         return np.sum(data, axis = 0, keepdims = True) * data.shape[0] / non_missing_days
-
+    # -------------------------------------------
+    
     
     # ------------------------------------------- 
     # function 16: 行业去中心化
@@ -340,6 +341,7 @@ class UserWrite(Execution):
             demean_data = np.where(ind_i>0, demean, demean_data)
             
         return demean_data
+    # -------------------------------------------
 
 
     # ------------------------------------------- 
@@ -360,7 +362,7 @@ class UserWrite(Execution):
                 sma[i] = beta * sma[i-1] + (1 - beta) * data[i]
                 
         return (sma[data.shape[0]-1:data.shape[0],:])
-        
+    # -------------------------------------------  
       
         
     # -------------------------------------------   
@@ -373,8 +375,9 @@ class UserWrite(Execution):
         '''
         DTM_max = ( (High-Open)[1:,:] > np.diff(Open, axis =0) ) * (High-Open)[1:,:] + \
                   ( (High-Open)[1:,:] <= np.diff(Open, axis =0) ) * np.diff(Open, axis =0) 
-        return (np.diff(Open, axis=0) >0 ) * DTM_max
- 
+        return (np.diff(Open, axis=0) >0 ) * DTM_max    
+    # -------------------------------------------
+        
         
     # -------------------------------------------  
     # function 19                                  
@@ -387,7 +390,7 @@ class UserWrite(Execution):
         DBM_max = ( (Open-Low)[1:,] > np.diff(Open, axis =0) ) * (Open-Low)[1:,:] + \
                   ( (Open-Low)[1:,] <= np.diff(Open, axis =0) ) * np.diff(Open, axis=0)
         return (np.diff(Open, axis=0) < 0 ) * DBM_max
-    
+    # -------------------------------------------
     
     
     # -------------------------------------------    
@@ -409,7 +412,7 @@ class UserWrite(Execution):
         TR_MAX1 = np.where((High-Low)[1:,:] > TR_ABS1, (High-Low)[1:,:], TR_ABS1)
         TR_MAX2 = np.where(TR_MAX1 > TR_ABS2, TR_MAX1, TR_ABS2)
         return TR_MAX2    
-    
+    # -------------------------------------------
     
     
     # -------------------------------------------     
@@ -421,7 +424,8 @@ class UserWrite(Execution):
         output - T x N维 数组
         '''
         return ((data>0) * 1 + (data==0) * 0 + (data<0) * -1) 
-
+    # -------------------------------------------
+    
     
     # ------------------------------------------- 
     # function 22
@@ -454,7 +458,7 @@ class UserWrite(Execution):
                 beta[0,i] = np.nan
 
         return beta
-    
+    # -------------------------------------------
     
     
     # -------------------------------------------
@@ -488,7 +492,7 @@ class UserWrite(Execution):
                 resi[:,i] = np.nan
 
         return resi
-
+    # -------------------------------------------
         
     # ==========================================================================================
     
@@ -503,10 +507,6 @@ class UserWrite(Execution):
           代表某一个时点上每一个股票是否正常交易
         
           '''
-
-          
-          
-        ### 股票筛选
         
         
         return alpha
