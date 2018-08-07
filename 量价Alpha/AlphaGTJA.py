@@ -5,16 +5,16 @@ import numpy as np
 
 
 
-def GJ_alpha(self):
+def GJ_alpha175(self):
 	# #############################################################
-	# GJ_alpha# :
-	# 含义
+	# GJ_alpha# :MEAN(MAX(MAX((HIGH-LOW),ABS(DELAY(CLOSE,1)-HIGH)),ABS(DELAY(CLOSE,1)-LOW)),6)
+	# 含义 过去6天内 的价差 -- 衡量可能的上涨强度 
 	#
 	# 策略方向：
 	# 主要买入：
 	# 主要卖出：
 	#---------------------------------------------
-	# 评价
+	# 评价：如果把这个看成是短期向上增长的潜力 
 	# --------------------------------------------
 	#
 	# 有效性趋势：
@@ -22,8 +22,25 @@ def GJ_alpha(self):
 	# last modify:
 	# #############################################################
 	
-	这里我做一个改动，看其他地方能不能pull push
-	# alpha = GJ[0,:] * self.Universe_one.iloc[i,:]
+	d1 = 6 + 1
+	
+	GJ175_highadj = self.HighPrice[di-DELAY-(d1)+1:di-DELAY+1,:] * self.adjfactor[di-DELAY-(d1)+1:di-DELAY+1,:]
+	GJ175_lowadj = self.LowPrice[di-DELAY-(d1)+1:di-DELAY+1,:] * self.adjfactor[di-DELAY-(d1)+1:di-DELAY+1,:]
+	GJ175_closeadj = self.ClosePrice[di-DELAY-(d1)+1:di-DELAY+1,:] * self.adjfactor[di-DELAY-(d1)+1:di-DELAY+1,:]
+	
+	GJ175_price_range = (GJ175_highadj-GJ175_lowadj)[1:,:]
+	GJ175_abs1 = np.abs(GJ175_closeadj[:-1,:] - GJ175_highadj[1:,:])
+	GJ175_abs2 = np.abs(GJ175_closeadj[:-1,:] - GJ175_lowadj[1:,:])
+	
+	max_value = (np.where(GJ175_abs1>GJ175_abs2, GJ175_abs1, GJ175_abs2))
+	
+	GJ175_max= self._ts_max(np.where(GJ175_price_range>max_value, GJ175_price_range, max_value))
+	
+	GJ175 = np.nanmean(GJ175_max, axis=0, keepdims=True) 
+	# 调整，将价差用过去一段时间的收盘价做标准化
+	GJ175 = np.nanmean(GJ175_max, axis=0, keepdims=True) / np.mean(GJ175_closeadj, axis=0, keepdims=True) 
+	
+	alpha = GJ175[0,:] * self.Universe_one.iloc[i,:]
 	return alpha 
 
 
@@ -160,6 +177,34 @@ def GJ_alpha183_totest(self):
 
 
 
+def GJ_alpha185_totest(self):
+	# #############################################################
+	# GJ_alpha#185 : RANK((-1 * ((1 -(OPEN / CLOSE))^2)))
+	# 含义: 日内价差收益率的平方 排序 
+	#
+	# 策略方向：
+	# 主要买入：
+	# 主要卖出：
+	#---------------------------------------------
+	# 评价：买卖日内收益率的波动？波动大/小的买入较多
+	# --------------------------------------------
+	#
+	# 有效性趋势：
+	# by: XX
+	# last modify:
+	# #############################################################
+	
+	GJ185_open = self.ClosePrice[di-DELAY:di-DELAY+1]
+	GJ185_close = self.ClosePrice[di-DELAY:di-DELAY+1]
+	
+	GJ185 = self._rank(-1*(np.power((1-GJ185_open/GJ185_close),2)))
+	
+	alpha = GJ185[0,:] * self.Universe_one.iloc[i,:]
+	return alpha 
+
+
+
+
 
 def GJ_alpha186_totest(self):
 	# #############################################################
@@ -238,7 +283,7 @@ def GJ_alpha186_totest(self):
 
 
 
-def GJ_alpha187_tovarify(self):
+def GJ_alpha187_totest(self):
 	# #############################################################
 	# GJ#187 = SUM((OPEN<=DELAY(OPEN,1)?0:MAX((HIGH-OPEN),(OPEN-DELAY(OPEN,1)))),20)
 	# 含义：开盘价 <=前一日开盘价 --> 0
@@ -257,22 +302,57 @@ def GJ_alpha187_tovarify(self):
 	# last modify:
 	# #############################################################
 	
+	DELAY = self.DELAY
 	d = 20+1 
-	
+
 	GJ187_highadj = self.HighPrice[di-DELAY-(d)+1:di-DELAY+1,:] * self.adjfactor[di-DELAY-(d)+1:di-DELAY+1,:]
 	GJ187_openadj = self.OpenPrice[di-DELAY-(d)+1:di-DELAY+1,:] * self.adjfactor[di-DELAY-(d)+1:di-DELAY+1,:]
-	
-	GJ187_cond = np.diff(GJ187_openadj)>0 
-	GJ187 =np.nanmean(np.where(GJ187_cond, np.nanmax(GJ187_highadj-GJ187_openadj)[1:], np.diff(GJ187_openadj)), axis=0, keepdims=True)
-	
+
+	GJ187_cond = np.diff(GJ187_openadj, axis=0)<=0 
+	GJ187_value = (GJ187_highadj[1:,:]>=GJ187_openadj[1:,:]) * (GJ187_highadj[1:,:]-GJ187_openadj[1:,:]) + (GJ187_highadj[1:,:]<GJ187_openadj[1:,:]) * np.diff(GJ187_openadj, axis=0)
+
+	GJ187 =np.nanmean(np.where(GJ187_cond, np.zeros((GJ187_openadj[1:,:].shape)),GJ187_value), axis=0, keepdims=True)
+
 	alpha = GJ187[0,:] * self.Universe_one.iloc[i,:]
+
 	return alpha 
 
 
 
 
 
-def GJ_alpha189_tovarify(self):
+
+
+def GJ_alpha188_totest(self):
+	# #############################################################
+	# GJ#188 = ((HIGH-LOW–SMA(HIGH-LOW,11,2))/SMA(HIGH-LOW,11,2))*100
+	# 含义：高低价差的 相对于过去11天移动平均值的 增长率 
+	# 
+	# 策略方向：买卖
+	# 主要买入：高低价差放大的股票： 1.波动大，2.可能要涨
+	#---------------------------------------------
+	# 评价：是否是在强势的市场中才有效；这个似乎是只在做volatility？还是过去历史上大多数价差放大意味着上涨/下跌？逻辑是？
+	# --------------------------------------------
+	#
+	# 有效性趋势：
+	# by: XX
+	# last modify:
+	# #############################################################
+	
+	d = 11 
+	
+	GJ188_highadj = self.HighPrice[di-DELAY-(d)+1:di-DELAY+1,:] * self.adjfactor[di-DELAY-(d)+1:di-DELAY+1,:] 
+	GJ188_lowadj = self.LowPrice[di-DELAY-(d)+1:di-DELAY+1,:] * self.adjfactor[di-DELAY-(d)+1:di-DELAY+1,:] 
+
+	GJ188 = ((GJ188_highadj - GJ188_highadj)[d-1:d,:] / self._SMA((GJ188_highadj-GJ188_lowadj),11,2) ) -1 
+	alpha = GJ188[0,:] * self.Universe_one.iloc[i,:]
+	return alpha 
+	
+	
+	
+	
+
+def GJ_alpha189_totest(self):
 	# #############################################################
 	# GJ#189 = MEAN(ABS(CLOSE-MEAN(CLOSE,6)),6)
 	#
@@ -290,24 +370,69 @@ def GJ_alpha189_tovarify(self):
 	d2=6
 	
 	GJ189_closeadj = self.ClosePrice[di-DELAY-(d1+d2-1)+1:di-DELAY+1,:] * self.adjfactor[di-DELAY-(d1+d2-1)+1:di-DELAY+1,:] 
-	
+
 	df_GJ189_closeadj = pd.DataFrame(GJ189_closeadj)
-	
+
 	GJ189 = np.nanmean(np.abs((GJ189_closeadj[-6:,:]-(df_GJ189_closeadj.rolling(6,2).mean().values[-6:,:]))), axis=0, keepdims = True)
-	
+
 	alpha = GJ189[0,:] * self.Universe_one.iloc[i,:]
 	return alpha 
 
 
 
-def GJ_alpha190_tba(self):
+def GJ_alpha190_totest(self):
 	# #############################################################
 	# GJ_alpha# : LOG((COUNT(CLOSE/DELAY(CLOSE)-1>((CLOSE/DELAY(CLOSE,19))^(1/20)-1),20)-1)*(SUMIF(((CLOSE/DELAY(CLOSE)-1-(CLOSE/DELAY(CLOSE,19))^(1/20)-1))^2,20,CLOSE/DELAY(CLOSE)-1<(CLOSE/DELAY(CLOSE,19))^(1/20)-1))/((COUNT((CLOSE/DELAY(CLOSE)-1<(CLOSE/DELAY(CLOSE,19))^(1/20)-1),20))*(SUMIF((CLOSE/DELAY(CLOSE)-1-((CLOSE/DELAY(CLOSE,19))^(1/20)-1))^2,20,CLOSE/DELAY(CLOSE)-1>(CLOSE/DELAY(CLOSE,19))^(1/20)-1))))
 	# LOG(
-	#      (COUNT(CLOSE/DELAY(CLOSE)-1>((CLOSE/DELAY(CLOSE,19))^(1/20)-1),20)-1)
-	#     *(SUMIF(((CLOSE/DELAY(CLOSE)-1-(CLOSE/DELAY(CLOSE,19))^(1/20)-1))^2,20,CLOSE/DELAY(CLOSE)-1<(CLOSE/DELAY(CLOSE,19))^(1/20)-1))
-	#     /((COUNT((CLOSE/DELAY(CLOSE)-1<(CLOSE/DELAY(CLOSE,19))^(1/20)-1),20))*(SUMIF((CLOSE/DELAY(CLOSE)-1-((CLOSE/DELAY(CLOSE,19))^(1/20)-1))^2,20,CLOSE/DELAY(CLOSE)-1>(CLOSE/DELAY(CLOSE,19))^(1/20)-1)))
+	#        (COUNT(CLOSE/DELAY(CLOSE)-1>((CLOSE/DELAY(CLOSE,19))^(1/20)-1),20)-1)
+	#       *(SUMIF(((CLOSE/DELAY(CLOSE)-1-(CLOSE/DELAY(CLOSE,19))^(1/20)-1))^2,20,CLOSE/DELAY(CLOSE)-1<(CLOSE/DELAY(CLOSE,19))^(1/20)-1))
+	#     /  
+	#        ((COUNT((CLOSE/DELAY(CLOSE)-1<(CLOSE/DELAY(CLOSE,19))^(1/20)-1),20))
+	#       *(SUMIF((CLOSE/DELAY(CLOSE)-1-((CLOSE/DELAY(CLOSE,19))^(1/20)-1))^2,20,CLOSE/DELAY(CLOSE)-1>(CLOSE/DELAY(CLOSE,19))^(1/20)-1)))
 	#    )
+	# 含义：相对于过去20天平均return的涨跌强弱 
+	# 
+	# condition: return > 过去20天的几何平均return 
+	# 
+	# 策略方向：买入
+	# 主要买入：
+	# 主要卖出：
+	#---------------------------------------------
+	# 评价
+	# --------------------------------------------
+	#
+	# 有效性趋势：
+	# by: XX
+	# last modify:
+	# #############################################################
+	
+	DELAY = self.DELAY
+
+	d1 = 20 
+
+	GJ190_closeadj = self.ClosePrice[di-DELAY-(d1+d1-1)+1:di-DELAY+1,:] * self.adjfactor[di-DELAY-(d1+d1-1)+1:di-DELAY+1,:]
+
+	np.diff(GJ190_closeadj,)
+
+	GJ190_ret = np.diff(GJ190_closeadj, axis=0)/GJ190_closeadj[:-1,:] - 1
+	GJ190_ret_20 = np.diff(GJ190_closeadj, n=19, axis=0)/GJ190_closeadj[:-19] - 1
+	GJ190_cond_expr = GJ190_ret[-20:] - GJ190_ret_20  # 逻辑判断的表达式 
+	GJ190_numerator =  np.nansum((np.power(GJ190_cond_expr,2) * (GJ190_cond_expr<0)), axis=0, keepdims=True)  # 分子部分 
+	GJ190_denominator = np.nansum((np.power(GJ190_cond_expr,2) * (GJ190_cond_expr>0)), axis=0, keepdims=True) # 分母部分
+
+	GJ190 = np.log(GJ190_numerator / GJ190_denominator)
+
+	alpha = GJ190[0,:] * self.Universe_one.iloc[i,:]
+	return alpha 
+
+
+
+
+
+
+def GJ_alpha191_totest(self):
+	# #############################################################
+	# GJ_alpha# : ((CORR(MEAN(VOLUME,20), LOW, 5) + ((HIGH + LOW) / 2)) -CLOSE)
 	# 含义
 	#
 	# 策略方向：
@@ -322,7 +447,21 @@ def GJ_alpha190_tba(self):
 	# last modify:
 	# #############################################################
 	
+	d1 = 20 
+	d2 = 5 
 	
-	GJ190 
-	alpha = GJ190[0,:] * self.Universe_one.iloc[i,:]
+	GJ191_turn = self.Turnover[di-DELAY-(d1+d2-1)+1:di-DELAY+1,:] 
+	GJ191_lowadj = self.LowPrice[di-DELAY-(d2)+1:di-DELAY+1,:] * self.adjfactor[di-DELAY-(d2)+1:di-DELAY+1,:] 
+	GJ191_high = self.HighPrice[di-DELAY:di-DELAY+1,:]
+	GJ191_low = self.LowPrice[di-DELAY:di-DELAY+1,:]
+	GJ191_close = self.ClosePrice[di-DELAY:di-DELAY+1]
+
+	GJ191_mean_turn = np.zeros((d2,GJ191_turn.shape[1]))
+	for ii in range(d2):
+		jj = ii + d1 
+		GJ191_mean_turn[ii] = np.nanmean(GJ191_turn[ii:jj], axis=0, keepdims=True)
+
+	GJ191 = self._correlation(GJ191_mean_turn, GJ191_lowadj) + (GJ191_high + GJ191_low)/GJ191_close
+
+	alpha = GJ191[0,:] * self.Universe_one.iloc[i,:]
 	return alpha 
