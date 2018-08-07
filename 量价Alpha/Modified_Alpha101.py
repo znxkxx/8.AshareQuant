@@ -41,25 +41,25 @@ def modified_alpha1():
     DELAY = self.DELAY
     d = 5
     d_r = 20
-    
+
     #alpha_01closeadj：(d+1)XN
     #alpha_01return：(d+d_r+1)XN
     #最后一行为今天的数据，没用
-    
+
     alpha01_closeadj = self.ClosePrice[di-DELAY-d:di-DELAY+1,:]*self.adjfactor[di-DELAY-d:di-DELAY+1,:]
-    
+
     alpha01_return = (self.ClosePrice[di-DELAY-(d+d_r):di-DELAY+1,:]*self.adjfactor[di-DELAY-(d+d_r):di-DELAY+1,:]) - \
     (self.ClosePrice[di-DELAY-(d+d_r)-1:di-DELAY,:]*self.adjfactor[di-DELAY-(d+d_r)-1:di-DELAY,:])/ \
     (self.ClosePrice[di-DELAY-(d+d_r)-1:di-DELAY,:]*self.adjfactor[di-DELAY-(d+d_r)-1:di-DELAY,:])
-    
+
     #rise：过去d天signedpower(((return<0)?stddev(return,20):close),2)，dXN数组
     #将过去d天的stddevv(return,20)存入dXN数组，然后使用where语句完成判断
-    
+
     return_stddev = np.full((d,alpha01_return.shape[1]),np.nan)
-    
+
     for ii in range(d):
         return_stddev[ii,:] = np.nanstd(alpha01_closeadj[i:d_r-1+ii+1,:],axis = 0,keepdims = 1)
-    
+
     rise = np.full((d,alpha01_return.shape[1]),np.nan)
     for ii in range (d):
         # ---------------------------
@@ -67,12 +67,9 @@ def modified_alpha1():
         # rise[ii,:] = np.where(alpha01_return[d_r+ii,:]<0, return_stddev[ii,:], alpha01_closeadj[ii,:])    
         modified_alpha01_closeadj = alpha01_closeadj / np.nanmean(alpha01_closeadj[:-1,:], axis=0, keepdims=True)
         rise[ii,:] = np.where(alpha01_return[d_r+ii,:]<0, return_stddev[ii,:], modified_alpha01_closeadj[ii,:])
-    
+
     alpha01 =self._rank(self._ts_argmax(rise).reshape((1,rise.shape[1])))
     alpha = alpha01[0,] * self.Universe_one.iloc[i,:]
-    
-
-    return alpha
 
 
 
@@ -104,7 +101,7 @@ def modified_alpha2():
     DELAY = self.DELAY 
     d1 = 3
     d2 = 6
-    
+
     # 改1：
     # alpha2_volume = self.Volume[di-DELAY-(d1+d2-1)+1:di-DELAY+1:,:]
     modified_alpha2_volume = self.Turnover[di-DELAY-(d1+d2-1)+1:di-DELAY+1:,:]
@@ -114,7 +111,7 @@ def modified_alpha2():
     alpha2 = -1 * self._correlation(self._rank(np.diff(np.log(modified_alpha2_volume), n=2, axis=0)), self._rank((alpha2_closeadj-alpha2_openadj)/alpha2_openadj))
 
     alpha = alpha2[0,:] * self.Universe_one.iloc[i,:]
-    return alpha 
+    return alpha
 
 
 
@@ -147,24 +144,24 @@ def modified_alpha3():
     # 改1：volume 本身收到股本规模的影响，此处改为turnover - 换手率（流通股本）
     # ################################################################################
     DELAY = self.DELAY
-    
+
     d = 10
     alpha3_OpenPrice = self.OpenPrice[di-DELAY - d + 1:di-DELAY + 1 , :] * self.adjfactor[di-DELAY - d + 1:di-DELAY + 1 , :]
     alpha3_RankOpenPrice = self._rank(alpha3_OpenPrice)
     # 改1
     # alpha3_Volume = self.Volume[di-DELAY - d + 1:di-DELAY + 1 , :]
     modified_alpha3_Volume = self.Turnover[di-DELAY - d + 1:di-DELAY + 1 , :]
-    
-    
+
+
     alpha3_RankVolume = self._rank(modified_alpha3_Volume)  #
     alpha3_corr = self._correlation(alpha3_RankOpenPrice , alpha3_RankVolume)
     alpha3 = -1 * alpha3_corr[-1 , :]
-    
+
     # 买卖反向
     alpha3 = -1 * alpha3
     alpha = alpha3 * self.Universe_one.iloc[i , :]
 
-    return alpha 
+    return alpha  
 
 def modified_alpha4():
     # ################################################################################
@@ -198,13 +195,13 @@ def modified_alpha4():
     
     # 改2
     # alpha4_low = self.LowPrice[di-DELAY - d + 1:di-DELAY + 1 , :] * self.adjfactor[di-DELAY - d + 1:di-DELAY + 1 ,:]
-    # alpha4_low = self.LowPrice[di-DELAY - d + 1:di-DELAY + 1 , :]
-    
+    alpha4_low = self.LowPrice[di-DELAY - d + 1:di-DELAY + 1 , :]
+
     # 改1
     # alpha4 = -1 * self._ts_rank(self._rank(alpha4_low))
     alpha4 = -1 * self._ts_rank(self._rank(alpha4_low / np.nanmean(alpha4_low, axis=0, keepdims=True)))
     alpha4 = alpha4.reshape(alpha4_low.shape[1] , )
-    
+
     alpha = alpha4 * self.Universe_one.iloc[i , :]
 
     return alpha 
@@ -243,12 +240,13 @@ def modified_alpha5():
     alpha5_vwap = self.vwap[di-DELAY - d + 1:di-DELAY + 1 , :] * self.adjfactor[di-DELAY - d + 1:di-DELAY + 1 , :]
     alpha5_vwap_last = self.vwap[di-DELAY:di-DELAY + 1 , :]
     alpha5_close = self.closeprice[di-DELAY:di-DELAY + 1 , :]
-    
+
     # 改1|2|3
     # alpha5 = (self._rank(alpha5_open - np.nanmean(alpha5_vwap , axis=0 , keepdims=True))) * (-1) * (np.abs(self._rank(alpha5_close - alpha5_vwap_last)))
-    
+
     alpha5_mean_vwap = np.nanmean(alpha5_vwap, axis=0, keepdims=True)
-    alpha5 = (self._rank((alpha5_open - alpha5_mean_vwap)/alpha5_mean_vwap),True) * (-1) * self._rank((alpha5_close - alpha5_vwap_last)/alpha5_mean_vwap,True)
+    alpha5 = (self._rank(((alpha5_open - alpha5_mean_vwap)/alpha5_mean_vwap),True))* (-1) * \
+             (self._rank(((alpha5_close - alpha5_vwap_last)/alpha5_mean_vwap),True))
     # 改3
     # alpha5 = alpha5 * (-1)
     alpha = alpha5[0,:] * self.Universe_one.iloc[i , :]
@@ -287,14 +285,14 @@ def modified_alpha6():
     # 改2
     # alpha6_Volume = self.Volume[di-DELAY - d + 1: di-DELAY + 1 , :]
     alpha6_Volume = self.Turnover[di-DELAY - d + 1: di-DELAY + 1 , :]
-    
+
     #改1
     # alpha6 = (-1) * self._correlation(alpha6_OpenPrice , alpha6_Volume)
     alpha6 = (-1) * self._correlation(alpha6_OpenPrice/np.nanmean(alpha6_OpenPrice[:-1,:], axis=0, keepdims=True) , alpha6_Volume)
-    
+
     # 买卖反向
     alpha6 = alpha6 * -1
-    
+
     alpha6 = alpha6[-1 , :]
     alpha = alpha6 * self.Universe_one.iloc[i , :]
 
@@ -339,7 +337,7 @@ def modified_alpha7():
     d2 = 60
     d3 = 20
     alpha7_ClosePrice = self.ClosePrice[di-DELAY - (d1 + 1) - d2 + 1:di-DELAY + 1 , :] * self.adjfactor[di-DELAY - ( d1 + 1) - d2 + 1:di-DELAY + 1 , :]
-    
+
     # 计算60个横截面组合，然后放入 _ts_rank
     delta_closprice = np.zeros((d2 , alpha7_ClosePrice.shape[1]))
     delta_closprice.fill(np.nan)
@@ -347,7 +345,7 @@ def modified_alpha7():
         end = start + d1 + 1
         # 改2
         delta_closprice[start] = self._delta(alpha7_ClosePrice[start:end])/np.nanmean(alpha7_ClosePrice[start:end-1])
-    
+
     alpha7_tsrank = self._ts_rank((np.abs(delta_closprice)))
     # 改1
     # alpha7_volume = self.Volume[di-DELAY - d3:di-DELAY , :]
@@ -355,12 +353,12 @@ def modified_alpha7():
     alpha7_condition = np.nanmean(alpha7_volume , axis=0 , keepdims=True) - self.Volume[di-DELAY:di-DELAY + 1 , :]
 
     alpha7 = np.where(alpha7_condition < 0 , (-1) * alpha7_tsrank * np.sign(delta_closprice[-1 , :].reshape(1 ,-1)) , -1)
-    
+
     # 买卖反向
     alpha7 = alpha7 * -1
     alpha = alpha7[0,:] * self.Universe_one.iloc[i , :]
 
-    return alpha 
+    return alpha
 
 
 
