@@ -306,10 +306,13 @@ class UserWrite(Execution):
     # -------------------------------------------
 
     
-    
 
+ 
+        
+    
     # -------------------------------------------    
     # function 15: sum(x,d)
+    
     def _ts_sum(self, data):
         '''
         主要是为了调整过去d日有停牌的情况 np.nansum()求和不能调整天数差异的影响
@@ -318,14 +321,30 @@ class UserWrite(Execution):
         non_missing_days = data.shape[0] - np.sum(np.isnan(data), axis = 0, keepdims = True)
         return np.sum(data, axis = 0, keepdims = True) * data.shape[0] / non_missing_days
 
-
-    # -------------------------------------------
-    # function 16: product(x,d)
- 
-        
     
-    # function 17: sma(a,m,n) - 计算指数移动平均
-    def _sma(self, data, m, n):
+    # ------------------------------------------- 
+    # function 16: 行业去中心化
+    def _industry_neutral(self, Industry, data, start, end):
+        '''
+        功能：返回指标减行业均值之后的数值
+        输入：data-     TxN矩阵，某一个待选指标
+             Industry- 行业信息数据，3维(TxNxInd) 0-1矩阵，第3维度是行业
+        输出：TxN矩阵
+        
+        '''
+        for ind_i in Industry.values():
+            ind_i = ind_i[start:end+1, :, :] # 截取需要计算日期范围内的 0-1 行业息息
+            ind_i[np.isnan(data)] = 0 # 进一步判断 如果对应的数据是 missing 该公司当天对应的权重也设定为0 
+            weight = ind_i / np.nansum(ind_i, axis=1, keepdims=True) # 计算出行业内每只股票的权重
+            demean = np.where(ind_i>0,data - np.nansum(weight * data, axis=1, keepdims=True), 0) # 计算de-mean之后的数值
+            demean_data = np.where(ind_i>0, demean, demean_data)
+            
+        return demean_data
+
+
+    # ------------------------------------------- 
+    # function 17: sma(a,m,n) - 计算移动平均
+    def _SMA(self, data, m, n):
         '''
         实现国泰君安Alpha中的SMA()函数
         输入：
@@ -336,11 +355,141 @@ class UserWrite(Execution):
         beta = m/n 
         for i in range(data.shape[0]):
             if i == 0:
-                sma[i] = (1 - beta) * a[i]
+                sma[i] = (1 - beta) * data[i]
             else:
-                sma[i] = beta * sma[i-1] + (1 - beta) * a[i]
+                sma[i] = beta * sma[i-1] + (1 - beta) * data[i]
                 
-        return (sma[data.shape[0]-1:data.shape[0],:])                
+        return (sma[data.shape[0]-1:data.shape[0],:])
+        
+      
+        
+    # -------------------------------------------   
+    # function 18:  
+    def _DTM(self, High, Open):
+        '''
+        OPEN<=DELAY(OPEN,1)?0:MAX((HIGH-OPEN),(OPEN-DELAY(OPEN,1))))
+        input: T x N维 数组， numpy格式
+        output: T-1 x N 维 数组，numpy格式 
+        '''
+        DTM_max = ( (High-Open)[1:,:] > np.diff(Open, axis =0) ) * (High-Open)[1:,:] + \
+                  ( (High-Open)[1:,:] <= np.diff(Open, axis =0) ) * np.diff(Open, axis =0) 
+        return (np.diff(Open, axis=0) >0 ) * DTM_max
+ 
+        
+    # -------------------------------------------  
+    # function 19                                  
+    def _DBM(self, Low, Open):
+        '''
+        OPEN>=DELAY(OPEN,1)?0:MAX((OPEN-LOW),(OPEN-DELAY(OPEN,1))))
+        input: T x N维 数组， numpy格式
+        output: T-1 x N 维 数组，numpy格式 
+        '''
+        DBM_max = ( (Open-Low)[1:,] > np.diff(Open, axis =0) ) * (Open-Low)[1:,:] + \
+                  ( (Open-Low)[1:,] <= np.diff(Open, axis =0) ) * np.diff(Open, axis=0)
+        return (np.diff(Open, axis=0) < 0 ) * DBM_max
+    
+    
+    
+    # -------------------------------------------    
+    # function 20
+    def _TR(self, High, Low, Close) :
+        
+        '''
+        _TR(self, High, Low, Close) = MAX(MAX(HIGH-LOW,ABS(HIGH-DELAY(CLOSE,1))),ABS(LOW-DELAY(CLOSE,1)) )
+        input: T x N维 数组， numpy格式
+          *High - 最高价
+          *Low - 最低价 
+          *Close - 收盘价
+        output: T-1 x N 维 数组，numpy格式 
+        '''
+
+        TR_ABS1 = np.abs(High[1:,:]-np.diff(Close, axis=0)) 
+        TR_ABS2 = np.abs(Low[1:,:] - np.diff(Close, axis=0))
+
+        TR_MAX1 = np.where((High-Low)[1:,:] > TR_ABS1, (High-Low)[1:,:], TR_ABS1)
+        TR_MAX2 = np.where(TR_MAX1 > TR_ABS2, TR_MAX1, TR_ABS2)
+        return TR_MAX2    
+    
+    
+    
+    # -------------------------------------------     
+    # function 21   
+    def _SIGN(self, data):
+        '''
+        返回 data 矩阵中每一个元素的符号
+        input - T x N维 数组 
+        output - T x N维 数组
+        '''
+        return ((data>0) * 1 + (data==0) * 0 + (data<0) * -1) 
+
+    
+    # ------------------------------------------- 
+    # function 22
+    def _REGBETA(self, Y, X):
+        '''
+        如果Y和X都是个股指标，函数为 Y和X的每一列对应做回归；如果Y是市场指标（只有1列），函数为Y和X的每一列做回归
+        Y 对 X 的回归的系数 仅限一元回归模型
+        input: numpy 数组， 每一行代表一个观测点，每一列代表一个股票 
+          Y -  数组 TxN 或者 Tx1, Tx1代表的是像 market returns这样的指标 
+          X -  多维数组  TxN 
+         需要将每一列的Y对X进行回归，得到对应的Beta系数
+        output:  1xN 的 二维数组
+        
+        将每一列的y和每一列的X回归，beta系数作为数组输出
+        '''   
+        beta = np.zeros((1,X.shape[1]))
+
+        for i in range(X.shape[1]):
+            if Y.shape[1] == 1:
+                y = Y
+            else: 
+                y = Y[:,i:i+1]     
+
+            x = np.concatenate((np.ones((X.shape[0], 1)), X[:,i:i+1]), axis=1)
+
+            try:    
+                est = sm.OLS(y,x).fit()
+                beta[0,i] = est.params[1]
+            except:
+                beta[0,i] = np.nan
+
+        return beta
+    
+    
+    
+    # -------------------------------------------
+    # function 23
+    def _REGRESI(self, Y, X):
+        '''
+        如果Y和X都是个股指标，函数为 Y和X的每一列对应做回归；如果Y是市场指标（只有1列），函数为Y和X的每一列做回归
+        Y 对 X 的回归的残差 仅限一元回归模型
+        input: numpy 数组， 每一行代表一个观测点，每一列代表一个股票
+          Y - 数组 TxN 或者 Tx1, Tx1代表的是像 market returns这样的指标
+          X - 多维数组  TxN 
+         其中 T代表日期，N代表股票个数 
+        output:  TxN 的数组
+        
+        将每一列的y和每一列的X回归，残差序列作为数组输出
+        '''   
+        resi = np.zeros((X.shape[0],X.shape[1]))
+
+        for i in range(X.shape[1]):
+            if Y.shape[1] == 1:
+                y = Y
+            else: 
+                y = Y[:,i:i+1]     
+
+            x = np.concatenate((np.ones((X.shape[0], 1)), X[:,i:i+1]), axis=1)
+
+            try:    
+                est = sm.OLS(y,x).fit()
+                resi[:,i] = est.resid
+            except:
+                resi[:,i] = np.nan
+
+        return resi
+
+        
     # ==========================================================================================
     
 
