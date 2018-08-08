@@ -693,8 +693,8 @@ def compute_alpha16():
     # ################################################################################    
     d = 5
     alpha16_volume = self.Volume[di-DELAY - d + 1:di-DELAY + 1 , :]
-    alpha16_high = self.Highprice[di-DELAY - d + 1:di-DELAY + 1 , :]
-    alpha16 = -1 * self._rank(self._covariance(self._rank(alpha16_high) , self._rank(alpha16_volume)))
+    alpha16_close = self.Closeprice[di-DELAY-d+1:di-DELAY+1,:] * self.adjfactor[di-DELAY-d+1:di-DELAY+1,:]
+    alpha16 = -1 * self._rank(self._covariance(self._rank(alpha16_close), self._rank(alpha16_volume)))
     
     # 买卖反向
     alpha16 = alpha16 * -1
@@ -1253,7 +1253,7 @@ def compute_alpha28():
         alpha28_adv20[ii] = np.nanmean(alpha28_volume_range[ii:ii + 20 , :] , axis=0 , keepdims=True)
     
     alpha28_corr = self._correlation(alpha28_adv20 , alpha28_low_range)
-    alpha28 = self._scale(alpha28_corr + alpha28_high + (alpha28_low_range[d1 - 1:d1 , :]) / 2 - alpha28_close)
+    alpha28 = self._scale(alpha28_corr + (alpha28_high + alpha28_low_range[d1 - 1:d1 , :]) / 2 - alpha28_close)
     
     alpha = alpha28.reshape((alpha28_high.shape[1] ,)) * self.Universe_one.iloc[i , :]
 
