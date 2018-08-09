@@ -1,54 +1,10 @@
-# -*- coding: utf-8 -*-
+class Support():
 
-
-from Execution import Execution
-
-import time
-import numpy as np
-import pandas as pd
-import scipy.stats as ss 
-import statsmodels.api as sm
-
-#%%
-class UserWrite(Execution):
-    '''
-    继承自Excution, 用户设置回测环境、获取数据、输入策略的类
-    用户在UserWrite中书写函数, 然后直接执行即可
-    
-    用户书写 Functions:
-        __init__:       设置回测环境、回测参数
-        fetch_data:     选取数据
-        Generate:       生成Alpha的函数
-        '''
-
-    def __init__(self,Date_start_test='2017-01-01', Date_end_test = '2018-01-01', \
-           Date_start_backtest = '2017-01-01', Date_end_backtest = '2018-01-01',\
-           test_type='test', freq='m', BENCHMARK = "000300.SH",\
-           FACTOR_NAME = 'alpha101', STRATEGY_NAME = None,\
-           industry_type = ('Wind',2),\
-           UNIVERSE_CONDITION = (None, 'liquidity',2000, None), LOOKBACK_DAYS = None,\
-           DECAY = 4,DELAY = 0, NEUTRALIZATION = "Market", MAX_STOCK_WEIGHT = 0.05,\
-           BUY_SELL_TYPE = "open"):
-
+    def __init__(self):
         
-        Execution.__init__(self,Date_start_test, Date_end_test,Date_start_backtest,\
-         Date_end_backtest,test_type, freq, BENCHMARK,\
-         FACTOR_NAME, STRATEGY_NAME,industry_type)
-        
-        self.update_paras(UNIVERSE_CONDITION,LOOKBACK_DAYS,DECAY,DELAY,\
-           NEUTRALIZATION, MAX_STOCK_WEIGHT,BUY_SELL_TYPE)
+        pass 
         
         
-    #--------------------------------------------------------------------------------
-    # Step1. 获取需要的基础数据，作为class attribute存储
-    def fetch_data(self):
-        '''
-        用户在该函数内输入需要获取的数据，通过父类prepare函数调用运行。
-        '''  
-        self.ClosePrice = self.get_trade_data('close')                           
-        self.OpenPrice = self.get_trade_data('open')     
-        
-    # ---------------------------------------------------------------------------------
     
     # -------------------------------------------
     # function 1. rank()
@@ -493,43 +449,4 @@ class UserWrite(Execution):
 
         return resi
     # -------------------------------------------
-        
-    # ==========================================================================================
     
-
-    def Generate(self, i, di, alpha):
-        '''
-        用户输入自定义策略，通过父类calculate函数计算alpha矩阵。
-        
-        参数说明: 
-        -------
-        di-可以理解为当前日期的指针，i-代表的是当前日期所在的index位置（用于在Universe_one中定位，Universe_one是一个0/1的DataFrame矩阵
-          代表某一个时点上每一个股票是否正常交易
-        
-          '''
-        
-        
-        return alpha
-
-
-#%% 运行
-if __name__ == '__main__':
-    '''
-    主函数
-    '''
-    print('程序运行开始：')
-    time_start = time.time()
-    
-    user = UserWrite()
-    user.data_prepare()
-#     user.run_program()
-
-    # 需要将当前文件名录入
-#     user.save_profile('alpha_test_function_xx.ipynb')
-
-time_end = time.time()
-print('程序运行结束！')
-print('运行时间为：', int(time_end - time_start),'s')
-
-
-    # 
