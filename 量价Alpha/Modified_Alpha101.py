@@ -33,18 +33,40 @@ class standardize_101alpha(Support):
    
     
     
-    # part2: self_defined functions
-    # 从类 Support中继承得到
-    
-    
-    
-    # part3: compute alphas 
+    # ################################################################################
+    DELAY = self.DELAY
+    d = 5
+    d_r = 20
 
-    def modified_alpha1(self):
-        
-        # ################################################################################
-        # alpha1 = (rank(Ts_ArgMax(SignedPower(((returns < 0) ? stddev(returns, 20) : close), 2.), 5)) - 0.5)
-        # 含义：买卖策略
+    #alpha_01closeadj：(d+1)XN
+    #alpha_01return：(d+d_r+1)XN
+    #最后一行为今天的数据，没用
+
+    alpha01_closeadj = self.ClosePrice[di-DELAY-d:di-DELAY+1,:]*self.adjfactor[di-DELAY-d:di-DELAY+1,:]
+
+    alpha01_return = (self.ClosePrice[di-DELAY-(d+d_r):di-DELAY+1,:]*self.adjfactor[di-DELAY-(d+d_r):di-DELAY+1,:]) - \
+    (self.ClosePrice[di-DELAY-(d+d_r)-1:di-DELAY,:]*self.adjfactor[di-DELAY-(d+d_r)-1:di-DELAY,:])/ \
+    (self.ClosePrice[di-DELAY-(d+d_r)-1:di-DELAY,:]*self.adjfactor[di-DELAY-(d+d_r)-1:di-DELAY,:])
+
+    #rise：过去d天signedpower(((return<0)?stddev(return,20):close),2)，dXN数组
+    #将过去d天的stddevv(return,20)存入dXN数组，然后使用where语句完成判断
+
+    return_stddev = np.full((d,alpha01_return.shape[1]),np.nan)
+
+    for ii in range(d):
+        return_stddev[ii,:] = np.nanstd(alpha01_closeadj[i:d_r-1+ii+1,:],axis = 0,keepdims = 1)
+
+    rise = np.full((d,alpha01_return.shape[1]),np.nan)
+    for ii in range (d):
+        # ---------------------------
+        # 改1：
+        # rise[ii,:] = np.where(alpha01_return[d_r+ii,:]<0, return_stddev[ii,:], alpha01_closeadj[ii,:])    
+        modified_alpha01_closeadj = alpha01_closeadj / np.nanmean(alpha01_closeadj[:-1,:], axis=0, keepdims=True)
+        rise[ii,:] = np.where(alpha01_return[d_r+ii,:]<0, return_stddev[ii,:], modified_alpha01_closeadj[ii,:])
+
+    alpha01 =self._rank(self._ts_argmax(rise).reshape((1,rise.shape[1])))
+    alpha = alpha01[0,] * self.Universe_one.iloc[i,:]
+
 
         # rank 为按照降序排列
         # ts_AgMax 最大值距离今天的天数 -- 买入的是 rank值较大--ts_argmax较小，也就是最近发生了 下述现象： 当日下跌且过去20天的波动较大 或者  当日上涨且收盘价较高 
@@ -118,10 +140,43 @@ class standardize_101alpha(Support):
         alpha = alpha01[0,] * self.Universe_one.iloc[i,:]
         
 
-        return alpha
+def modified_alpha2():
+    # ################################################################################
+    # alpha2 : (-1 * correlation(rank(delta(log(volume), 2)), rank(((close - open) / open)), 6))
+    # 逻辑含义： -1 * corr(volume的增长率，return的增长率）
+    # key words: 量价走势
+    # 卖出策略 卖出 交易量 增长率 和 收益率增长率 在过去6 个交易日内的 相关性
+    # 
+    
+    # 回测结果：2015年与市场反向持续跌；2016年相对平稳，2017年走高 
+    # 
+    ##cum_return_rate         -0.285018
+    ##final_return_rate      -0.0671655
+    ##beta                    -0.474139
+    ##alpha                  -0.0711064
+    ##sharpe ratio            -0.524066
+    ##information ratio       -0.428635
+    ##turnover rate            0.190379
+    ##max drawdown             0.505588
+        ##drawdown start date  2015-11-25
+        ##drawdown end date          None
+    ##fitness                 -0.311279    
+    #
+    # 改1：volume 本身收到股本规模的影响，此处改为turnover - 换手率（流通股本）
+    # ################################################################################ 
+    DELAY = self.DELAY 
+    d1 = 3
+    d2 = 6
+
+    # 改1：
+    # alpha2_volume = self.Volume[di-DELAY-(d1+d2-1)+1:di-DELAY+1:,:]
+    modified_alpha2_volume = self.Turnover[di-DELAY-(d1+d2-1)+1:di-DELAY+1:,:]
+    alpha2_closeadj = self.Closeprice[di-DELAY-(d2)+1:di-DELAY+1,:] * self.adjfactor[di-DELAY-(d2)+1:di-DELAY+1,:]
+    alpha2_openadj = self.Openprice[di-DELAY-(d2)+1:di-DELAY+1,:] * self.adjfactor[di-DELAY-(d2)+1:di-DELAY+1,:]
 
 
-
+    alpha = alpha2[0,:] * self.Universe_one.iloc[i,:]
+    return alpha
 
     def modified_alpha2(self):
         # ################################################################################
@@ -165,8 +220,93 @@ class standardize_101alpha(Support):
         alpha = alpha2[0,:] * self.Universe_one.iloc[i,:]
         return alpha 
 
+def modified_alpha3():
+    
+    # ################################################################################
+    #alpha3=(-1* correlation(rank(open), rank(volume), 10)) 
+    
+    #含义 卖出策略
+    # 关键词: 量价走势 
+    #重点卖出 open和volume在过去10天内相关性较大的股票
+    
+    # 测试后应该买卖反向——买入 open和volume 相关性较高的股票
+    # 
+    # 回测结果 （测试为买卖反向后的结果）
+    # 2015年以前上涨 幅度超大盘； 2015年 2016年与大盘走势基本一致；2017年后走低
+    # cum_return_rate          0.107058
+    # final_return_rate       0.0213009
+    # beta                     0.450899
+    # alpha                  -0.0441551
+    # sharpe ratio           -0.0763798
+    # information ratio       -0.401445
+    # turnover rate            0.149865
+    # max drawdown             0.400284
+    #   drawdown start date  2017-12-25
+    #   drawdown end date          None
+    # fitness                -0.0287957
+    
+    # 改1：volume 本身收到股本规模的影响，此处改为turnover - 换手率（流通股本）
+    # ################################################################################
+    DELAY = self.DELAY
+
+    d = 10
+    alpha3_OpenPrice = self.OpenPrice[di-DELAY - d + 1:di-DELAY + 1 , :] * self.adjfactor[di-DELAY - d + 1:di-DELAY + 1 , :]
+    alpha3_RankOpenPrice = self._rank(alpha3_OpenPrice)
+    # 改1
+    # alpha3_Volume = self.Volume[di-DELAY - d + 1:di-DELAY + 1 , :]
+    modified_alpha3_Volume = self.Turnover[di-DELAY - d + 1:di-DELAY + 1 , :]
 
 
+    alpha3_RankVolume = self._rank(modified_alpha3_Volume)  #
+    alpha3_corr = self._correlation(alpha3_RankOpenPrice , alpha3_RankVolume)
+    alpha3 = -1 * alpha3_corr[-1 , :]
+
+    # 买卖反向
+    alpha3 = -1 * alpha3
+    alpha = alpha3 * self.Universe_one.iloc[i , :]
+
+    return alpha  
+
+def modified_alpha4():
+    # ################################################################################
+    # alpha4 = (-1 * TS_Rank(rank(low),9))
+    # 含义： 买入 收盘价 cross大 -- rank值小 -- 相对历史排名 更高 -- ts_rank更小， -1 -->  卖出的权重越小
+    #                       小 ---      大 --             低  --         大      -->  卖出的权重越大
+    # ==> 卖出策略：重点卖出处于截面和历史低位的股票  
+    # 在2周频率上 属于 momentum 行情， 
+    # 关键词 Momentumn/Reversal
+    
+    # 回测结果
+    # 持续上涨，除了2015年 有大幅回撤 
+    # cum_return_rate          0.754721
+    # final_return_rate        0.123593
+    # beta                    0.0519674
+    # alpha                   0.0846658
+    # sharpe ratio              0.93691
+    # information ratio       0.0862486
+    # turnover rate            0.238967
+    # max drawdown             0.166898
+    #   drawdown start date  2015-07-08
+    #   drawdown end date    2015-09-14
+    # fitness                  0.673791
+    # 
+    # 改1: 这里直接用 low 在截面上比较会受到 上市早晚的影响 用过去8天的 平均low做标准化 
+    # 改2：因为这里是现在截面上 rank，然后在 时间上做rank，不需要复权
+    # ################################################################################    
+    
+    DELAY = self.DELAY
+    d = 9
+    
+    # 改2
+    # alpha4_low = self.LowPrice[di-DELAY - d + 1:di-DELAY + 1 , :] * self.adjfactor[di-DELAY - d + 1:di-DELAY + 1 ,:]
+    alpha4_low = self.LowPrice[di-DELAY - d + 1:di-DELAY + 1 , :]
+
+    # 改1
+    # alpha4 = -1 * self._ts_rank(self._rank(alpha4_low))
+    alpha4 = -1 * self._ts_rank(self._rank(alpha4_low / np.nanmean(alpha4_low, axis=0, keepdims=True)))
+    alpha4 = alpha4.reshape(alpha4_low.shape[1] , )
+
+    alpha = alpha4 * self.Universe_one.iloc[i , :]
 
     def modified_alpha3(self):
         
@@ -225,7 +365,50 @@ class standardize_101alpha(Support):
         alpha3 = -1 * alpha3
         alpha = alpha3 * self.Universe_one.iloc[i , :]
 
-        return alpha 
+def modified_alpha5():
+    # ################################################################################
+    # alpha5=(rank(open-(sum(vwap, 10)/10)))*(-1*abs(rank((close-vwap))))
+    #
+    # 测试后应该买卖反向操作
+    #  买入当天收跌且开盘低于过去10天均价的股票 -- 超跌反弹 
+    
+    # 关键词 Momentum/Reversal 
+    # 在1天的频率下 为 reversal
+    
+    # 回测结果
+    # 持续上涨 -- 关注下为什么
+    # cum_return_rate           2.00893
+    # final_return_rate        0.256448
+    # beta                    0.0437328
+    # alpha                    0.218069
+    # sharpe ratio              2.28373
+    # information ratio        0.608949
+    # turnover rate            0.372782
+    # max drawdown            0.0812375
+    #   drawdown start date  2015-07-08
+    #   drawdown end date    2015-07-14
+    # fitness                   1.89416
+    
+    # 改1：这里价差指标可能收到 上市早晚的影响，用过去10天的vwap 作为调整 
+    # 改2：降序排列改为升序排列，对应反向暂时取消
+    # 改3：abs()函数无用，去掉
+    # ################################################################################  
+    DELAY = self.DELAY
+    d = 10
+    alpha5_open = self.openprice[di-DELAY:di-DELAY + 1 , :] * self.adjfactor[di-DELAY:di-DELAY + 1 , :]
+    alpha5_vwap = self.vwap[di-DELAY - d + 1:di-DELAY + 1 , :] * self.adjfactor[di-DELAY - d + 1:di-DELAY + 1 , :]
+    alpha5_vwap_last = self.vwap[di-DELAY:di-DELAY + 1 , :]
+    alpha5_close = self.closeprice[di-DELAY:di-DELAY + 1 , :]
+
+    # 改1|2|3
+    # alpha5 = (self._rank(alpha5_open - np.nanmean(alpha5_vwap , axis=0 , keepdims=True))) * (-1) * (np.abs(self._rank(alpha5_close - alpha5_vwap_last)))
+
+    alpha5_mean_vwap = np.nanmean(alpha5_vwap, axis=0, keepdims=True)
+    alpha5 = (self._rank(((alpha5_open - alpha5_mean_vwap)/alpha5_mean_vwap),True))* (-1) * \
+             (self._rank(((alpha5_close - alpha5_vwap_last)/alpha5_mean_vwap),True))
+    # 改3
+    # alpha5 = alpha5 * (-1)
+    alpha = alpha5[0,:] * self.Universe_one.iloc[i , :]
 
     def modified_alpha4(self):
         # ################################################################################
@@ -283,123 +466,111 @@ class standardize_101alpha(Support):
 
         return alpha 
 
-    def modified_alpha5_improved(self):
-        # ################################################################################
-        # alpha5=(rank(open-(sum(vwap, 10)/10)))*(-1*abs(rank((close-vwap))))
-        #
-        # 测试后应该买卖反向操作
-        #  买入当天收跌且开盘低于过去10天均价的股票 -- 超跌反弹 
-        
-        # 关键词 Momentum/Reversal 
-        # 在1天的频率下 为 reversal
-        
-        # 回测结果
-        # 持续上涨 -- 关注下为什么
-        # cum_return_rate           2.00893
-        # final_return_rate        0.256448
-        # beta                    0.0437328
-        # alpha                    0.218069
-        # sharpe ratio              2.28373
-        # information ratio        0.608949
-        # turnover rate            0.372782
-        # max drawdown            0.0812375
-        #   drawdown start date  2015-07-08
-        #   drawdown end date    2015-07-14
-        # fitness                   1.89416
-        
-        # 改1：这里价差指标可能收到 上市早晚的影响，用过去10天的vwap 作为调整 
-        # 改2：降序排列改为升序排列，对应反向暂时取消
-        # 改3：abs()函数无用，去掉
-        #
-        # 有进一步改善 
-        ##cum_return_rate            2.6112
-        ##final_return_rate        0.304866
-        ##beta                    0.0520284
-        ##alpha                    0.265935
-        ##sharpe ratio              2.58256
-        ##information ratio        0.796604
-        ##turnover rate             0.36786
-        ##max drawdown             0.101115
-            ##drawdown start date  2015-07-08
-            ##drawdown end date    2015-07-13
-        ##fitness                   2.35106    
-        # ################################################################################  
-        DELAY = self.DELAY
-        d = 10
-        alpha5_open = self.openprice[di-DELAY:di-DELAY + 1 , :] * self.adjfactor[di-DELAY:di-DELAY + 1 , :]
-        alpha5_vwap = self.vwap[di-DELAY - d + 1:di-DELAY + 1 , :] * self.adjfactor[di-DELAY - d + 1:di-DELAY + 1 , :]
-        alpha5_vwap_last = self.vwap[di-DELAY:di-DELAY + 1 , :]
-        alpha5_close = self.closeprice[di-DELAY:di-DELAY + 1 , :]
-        
-        # 改1|2|3
-        # alpha5 = (self._rank(alpha5_open - np.nanmean(alpha5_vwap , axis=0 , keepdims=True))) * (-1) * (np.abs(self._rank(alpha5_close - alpha5_vwap_last)))
-        
-        alpha5_mean_vwap = np.nanmean(alpha5_vwap, axis=0, keepdims=True)
-        alpha5 = (self._rank((alpha5_open - alpha5_mean_vwap)/alpha5_mean_vwap),True) * (-1) * self._rank((alpha5_close - alpha5_vwap_last)/alpha5_mean_vwap,True)
-        # 改3
-        # alpha5 = alpha5 * (-1)
-        alpha = alpha5[0,:] * self.Universe_one.iloc[i , :]
+def modified_alpha6():
+    # ################################################################################
+    # alpha6 = (-1*correlation(open, volume, 10)
+    # 含义 买入过去10天内开盘价格与成交量的相关系数较小的股票
+    # 12周的考察期
+    # 关键词 量价走势 
+    # 测试后应该买卖反向——买入 open和volume 相关性较低的股票
+    
+    # 回测结果 （最近一年的表现较差）
+    # 2015年以前持续温和上涨； 2015年暴涨暴跌； 2016 高位震荡 ； 2017 持续走低
+    # cum_return_rate          0.800496
+    # final_return_rate        0.129605
+    # beta                     0.693569
+    # alpha                   0.0480117
+    # sharpe ratio             0.339282
+    # information ratio        0.119227
+    # turnover rate            0.137946
+    # max drawdown             0.435465
+    #   drawdown start date  2017-12-05
+    #   drawdown end date          None
+    # fitness                  0.328864
+    
+    # 改1：将 open用过去9天的均值做调整，
+    # 改2：volume 改为 turnover
+    # ################################################################################    
+    DELAY = self.DELAY
+    d = 10
+    alpha6_OpenPrice = self.OpenPrice[di-DELAY - d + 1: di-DELAY + 1 , :] * self.adjfactor[ di-DELAY - d + 1: di-DELAY + 1 , :]
+    # 改2
+    # alpha6_Volume = self.Volume[di-DELAY - d + 1: di-DELAY + 1 , :]
+    alpha6_Volume = self.Turnover[di-DELAY - d + 1: di-DELAY + 1 , :]
+
+    #改1
+    # alpha6 = (-1) * self._correlation(alpha6_OpenPrice , alpha6_Volume)
+    alpha6 = (-1) * self._correlation(alpha6_OpenPrice/np.nanmean(alpha6_OpenPrice[:-1,:], axis=0, keepdims=True) , alpha6_Volume)
+
+    # 买卖反向
+    alpha6 = alpha6 * -1
+
+    alpha6 = alpha6[-1 , :]
+    alpha = alpha6 * self.Universe_one.iloc[i , :]
 
         return alpha 
 
 
-    def modified_alpha6(self):
-        # ################################################################################
-        # alpha6 = (-1*correlation(open, volume, 10)
-        # 含义 买入过去10天内开盘价格与成交量的相关系数较小的股票
-        # 12周的考察期
-        # 关键词 量价走势 
-        # 测试后应该买卖反向——买入 open和volume 相关性较低的股票
-        
-        # 回测结果 （最近一年的表现较差）
-        # 2015年以前持续温和上涨； 2015年暴涨暴跌； 2016 高位震荡 ； 2017 持续走低
-        # cum_return_rate          0.800496
-        # final_return_rate        0.129605
-        # beta                     0.693569
-        # alpha                   0.0480117
-        # sharpe ratio             0.339282
-        # information ratio        0.119227
-        # turnover rate            0.137946
-        # max drawdown             0.435465
-        #   drawdown start date  2017-12-05
-        #   drawdown end date          None
-        # fitness                  0.328864
-        
-        # 改1：将 open用过去9天的均值做调整，
-        # 改2：volume 改为 turnover
-        #
-        # 修改后 效果 不明显 略有下降 
-        ##cum_return_rate          0.764037
-        ##final_return_rate        0.124826
-        ##beta                     0.695441
-        ##alpha                   0.0431083
-        ##sharpe ratio             0.321598
-        ##information ratio       0.0986132
-        ##turnover rate            0.137798
-        ##max drawdown             0.435198
-            ##drawdown start date  2017-12-05
-            ##drawdown end date          None
-        ##fitness                  0.306087    
-        # ################################################################################    
-        DELAY = self.DELAY
-        d = 10
-        alpha6_Openprice = self.Openprice[di-DELAY - d + 1: di-DELAY + 1 , :] * self.adjfactor[ di-DELAY - d + 1: di-DELAY + 1 , :]
+def modified_alpha7():
+    # ################################################################################
+    # Alpha 7
+    # alpha7=((adv20 < volume)? ((-1 * ts_rank(abs(delta(close,7)), 60))*sign(delta(close, 7))): -1*1)
+    # 含义： 买卖策略 
+    #  交易量 < 过去20天均值 -->  收盘价相对于7天前的变动在过去60天内上升/下降值大小* -1 ==> 买入下降的；卖出上升的 
+    #  交易量 >= 过去20天均值 --> Alpha = -1
+    
+    # 测试后 应买卖方向
+    # 如果交易量大于过去20天的均值--> 买入（等权）--牛市下逻辑比价正确；大概率上涨
+    # 如果交易量较低：--> 收盘价相对7天前上升--买入； 收盘价相对7天前下降--卖出， 价格变化的幅度越小，买入/卖出的比例越大
+    # 关键词： 量价走势; Momentum/Reversal 
+    # 在7天的频率下 符合  Momentum --> 如果交易量下降 则确认了momentum的存在 
+    
+    # 回测结果
+    # cum_return_rate           1.36504
+    # final_return_rate         0.19529
+    # beta                       0.7517
+    # alpha                    0.109831
+    # sharpe ratio              0.55634
+    # information ratio        0.408191
+    # turnover rate            0.161276
+    # max drawdown             0.401758
+    #   drawdown start date  2015-09-15
+    #   drawdown end date          None
+    # fitness                  0.612202
+    
+    # 
+    # 改1：volume 改为 turnover
+    # 改2：delta(close, 7)用过去7天close做标准化
+    # ################################################################################  
+    
+    DELAY = self.DELAY 
+    # 首先提取 过去67天的数据
+    d1 = 7  # 相对于7天前， index 差 7+1
+    d2 = 60
+    d3 = 20
+    alpha7_ClosePrice = self.ClosePrice[di-DELAY - (d1 + 1) - d2 + 1:di-DELAY + 1 , :] * self.adjfactor[di-DELAY - ( d1 + 1) - d2 + 1:di-DELAY + 1 , :]
+
+    # 计算60个横截面组合，然后放入 _ts_rank
+    delta_closprice = np.zeros((d2 , alpha7_ClosePrice.shape[1]))
+    delta_closprice.fill(np.nan)
+    for start in range(d2):
+        end = start + d1 + 1
         # 改2
-        # alpha6_Volume = self.Volume[di-DELAY - d + 1: di-DELAY + 1 , :]
-        alpha6_Volume = self.Turnover[di-DELAY - d + 1: di-DELAY + 1 , :]
-        
-        #改1
-        # alpha6 = (-1) * self._correlation(alpha6_Openprice , alpha6_Volume)
-        alpha6 = (-1) * self._correlation(alpha6_Openprice/np.nanmean(alpha6_Openprice[:-1,:], axis=0, keepdims=True) , alpha6_Volume)
-        
-        # 买卖反向
-        alpha6 = alpha6 * -1
-        
-        alpha6 = alpha6[-1 , :]
-        alpha = alpha6 * self.Universe_one.iloc[i , :]
+        delta_closprice[start] = self._delta(alpha7_ClosePrice[start:end])/np.nanmean(alpha7_ClosePrice[start:end-1])
 
-        return alpha 
+    alpha7_tsrank = self._ts_rank((np.abs(delta_closprice)))
+    # 改1
+    # alpha7_volume = self.Volume[di-DELAY - d3:di-DELAY , :]
+    alpha7_volume = self.Turnover[di-DELAY - d3:di-DELAY , :]
+    alpha7_condition = np.nanmean(alpha7_volume , axis=0 , keepdims=True) - self.Volume[di-DELAY:di-DELAY + 1 , :]
 
+    alpha7 = np.where(alpha7_condition < 0 , (-1) * alpha7_tsrank * np.sign(delta_closprice[-1 , :].reshape(1 ,-1)) , -1)
+
+    # 买卖反向
+    alpha7 = alpha7 * -1
+    alpha = alpha7[0,:] * self.Universe_one.iloc[i , :]
+
+    return alpha
 
     def modified_alpha7(self):
         # ################################################################################
