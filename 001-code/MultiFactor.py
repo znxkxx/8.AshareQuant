@@ -6,8 +6,9 @@
 #create on: 20180810
 # 20180824 主体框架完成. by xx
 # 20180827 用pandas类型的数据改写（方便对其时间和代码）；添加注释.  by: xx
+# 20180831 实现滚动预测（用linear regression model 做测试）
 
-
+import time
 import pandas as pd
 import numpy as np
 
@@ -18,9 +19,12 @@ import sklearn
 from sklearn import metrics
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
-
 from sklearn.cross_validation import train_test_split
 
+from sklearn import svm
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import BaggingClassifier
+from sklearn.ensemble import RandomForestClassifier
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -35,7 +39,7 @@ class MultiFactor():
     -------------------------------------------------------------------------------
     参数：
      - path_data: input数据存放路径
-     - path_result: 结果文件保存的路径
+     - path_result_data: 结果文件保存的路径
 
      - file_stock_ret：个股收益率数据文件名
      - file_HS300_ret：基准回报率（HS300)文件名
@@ -78,13 +82,13 @@ class MultiFactor():
 
         # input file retated parameters
         # self.path_data = "D:\\quantpy\\quant_option_2\\code\\Backtest\\output\\"
-        # self.path_result = "D:\\quantpy\\quant_option_2\\code\\Backtest\\RegTest\\"
+        # self.path_result_data = "D:\\quantpy\\quant_option_2\\code\\Backtest\\RegTest\\"
 
         self.path_data = "E:/4.Project/Current/004-AshareQuant/002-data/"
-        self.path_result = "E:/4.Project/Current/004-AshareQuant/003-result/"
+        self.path_result_data = "E:/4.Project/Current/004-AshareQuant/003-result_data/"
 
         #self.path_data = "/Users/xinxu/Documents/8.AshareQuant/002-data/"
-        #self.path_result = "/Users/xinxu/Documents/8.AshareQuant/003-result/"
+        #self.path_result_data = "/Users/xinxu/Documents/8.AshareQuant/003-result_data/"
         
         self.file_stock_ret = "Stock_Return.csv"
         self.file_HS300_ret = "HS300_Return.csv"
@@ -103,19 +107,8 @@ class MultiFactor():
 
         #
         self.StockReturnSize = [self.TEST_DAYS,self.Stock_Universe]
-        self.BenchReturnDataSize = [self.TEST_DAYS,1]
-        self.UniverseDataSize = [self.TEST_DAYS,self.Stock_Universe]
-
-
-        #self.StockReturnData = np.empty(self.StockReturnSize)
-        #self.BenchReturnData = np.empty(self.BenchReturnDataSize)
-        #self.UniverseData = np.empty(self.UniverseDataSize)
-        #self.FactorData = np.empty(self.FactorShape)
-        #self.IndustryData = np.empty(self.IndustryShape)
-
-        #self.StdFactor = self.FactorData.copy()
-        #self.ResStdFactor = self.StdFactor.copy()
-        #self.RankResStdFactor = self.StdFactor.copy()
+        df_BenchReturnDataSize = [self.TEST_DAYS,1]
+        df_UniverseDataSize = [self.TEST_DAYS,self.Stock_Universe]
 
 
 
@@ -125,7 +118,7 @@ class MultiFactor():
         self.percent_select = [0.3, 0.7] # 分别代表 low_bar 和 high_bar
         self.percent_cv = 0.1
         self.method = "RandomForest"
-        self.rolling_period = 250 # 滚动窗口长度为250天
+        self.rolling_period = 100 # 滚动窗口长度为100天
         self.predict_period = 1 # 预测窗口为1天
 
         print("initialize finished")
@@ -143,64 +136,63 @@ class MultiFactor():
         # 个股收益率数据
         # t日的收益率 = (t+1)开盘价 / t日开盘价 -1
         filename = self.path_data + self.file_stock_ret
-        self.StockReturnData = pd.DataFrame(pd.read_csv(filename, index_col=['date']).stack(dropna=False)).reset_index()
-        self.StockReturnData.columns = ['date','stkcd','StkRet']
+        df_StockReturnData = pd.DataFrame(pd.read_csv(filename, index_col=['date']).stack(dropna=False)).reset_index()
+        df_StockReturnData.columns = ['date','stkcd','StkRet']
 
 
 
         # 指数收益率数据
         filename = self.path_data + self.file_HS300_ret
-        self.BenchReturnData = pd.DataFrame(pd.read_csv(filename, index_col=['date']).stack(dropna=False)).reset_index()
-        self.BenchReturnData.columns = ['date','Index','HS300ret']
+        df_BenchReturnData = pd.DataFrame(pd.read_csv(filename, index_col=['date']).stack(dropna=False)).reset_index()
+        df_BenchReturnData.columns = ['date','Index','HS300ret']
 
         # 股票选取范围数据
         filename = self.path_data + self.file_Universe
-        self.UniverseData = pd.DataFrame(pd.read_csv(filename, index_col=['date']).stack(dropna=False)).reset_index()
-        self.UniverseData.columns = ['date','stkcd','Universe']
+        df_UniverseData = pd.DataFrame(pd.read_csv(filename, index_col=['date']).stack(dropna=False)).reset_index()
+        df_UniverseData.columns = ['date','stkcd','Universe']
 
         # 因子数据: 
         for i,i_factor in enumerate(self.factor_list):
             filename =self.path_data + "alpha" + i_factor + "_factor_xx.ipynb.csv"
 
-            df_FactorData = pd.read_csv(filename, index_col=['date'])
-            df_FactorData.drop(df_FactorData.columns[[0]], axis=1, inplace=True)
-            df_FactorData = pd.DataFrame(df_FactorData.stack(dropna=False)).reset_index()
-            df_FactorData.columns = ['date','stkcd','factor'+str(i)]
+            filedata = pd.read_csv(filename, index_col=['date'])
+            filedata.drop(filedata.columns[[0]], axis=1, inplace=True)
+            filedata = pd.DataFrame(filedata.stack(dropna=False)).reset_index()
+            filedata.columns = ['date','stkcd','factor'+str(i)]
             if i == 0:
-                self.FactorData = df_FactorData
+                df_FactorData = filedata
             else:
-                self.FactorData = pd.merge(self.FactorData, df_FactorData, on=['date','stkcd'])
+                df_FactorData = pd.merge(df_FactorData, filedata, on=['date','stkcd'])
 
 
         # 行业数据:
-
-        for i in range(self.industry_num):
-            # print("industry"+str(i))
-            filename = self.path_data + self.file_Industry_prefix + str(i) + ".csv"
-            df_IndustryData = pd.DataFrame(pd.read_csv(filename, index_col=['date']).stack(dropna=False)).reset_index()
-            df_IndustryData.columns =  ['date','stkcd','industry'+str(i)]
-            if i == 0:
-                self.IndustryData = df_IndustryData
-            else:
-                self.IndustryData = pd.merge(self.IndustryData, df_IndustryData, on=['date','stkcd'])
+        #for i in range(self.industry_num):
+            ## print("industry"+str(i))
+            #filename = self.path_data + self.file_Industry_prefix + str(i) + ".csv"
+            #filedata = pd.DataFrame(pd.read_csv(filename, index_col=['date']).stack(dropna=False)).reset_index()
+            #filedata.columns =  ['date','stkcd','industry'+str(i)]
+            #if i == 0:
+                #df_IndustryData = filedata
+            #else:
+                #df_IndustryData = pd.merge(df_IndustryData, filedata, on=['date','stkcd'])
                 
         # 将日期全部转成 date-time 格式 
-        self.StockReturnData['date'] = pd.to_datetime(self.StockReturnData['date'])
-        self.BenchReturnData['date'] = pd.to_datetime(self.BenchReturnData['date'])
-        self.UniverseData['date'] = pd.to_datetime(self.UniverseData['date'])
-        self.IndustryData['date'] = pd.to_datetime(self.IndustryData['date'])
+        df_StockReturnData['date'] = pd.to_datetime(df_StockReturnData['date'])
+        df_BenchReturnData['date'] = pd.to_datetime(df_BenchReturnData['date'])
+        df_UniverseData['date'] = pd.to_datetime(df_UniverseData['date'])
+        # self.Data['Universe'] = self.Data.Universe.fillna(0.0)
+        # df_IndustryData['date'] = pd.to_datetime(df_IndustryData['date'])
     
-        self.FactorData['date'] = pd.to_datetime(self.FactorData.date.astype(str))
+        df_FactorData['date'] = pd.to_datetime(df_FactorData.date.astype(str))
         
-        self.Data = pd.merge(self.StockReturnData, self.BenchReturnData, on=['date'])
-        self.Data = pd.merge(self.Data, self.UniverseData, on=['date','stkcd'])
-        self.Data = pd.merge(self.Data, self.FactorData, on=['date','stkcd'])
-        self.Data = pd.merge(self.Data, self.IndustryData, on=['date','stkcd'])
+        self.Data = pd.merge(df_StockReturnData, df_BenchReturnData, on=['date'])
+        self.Data = pd.merge(self.Data, df_UniverseData, on=['date','stkcd'])
+        self.Data = pd.merge(self.Data, df_FactorData, on=['date','stkcd'])
+        # self.Data = pd.merge(self.Data, df_IndustryData, on=['date','stkcd'])
        
-        self.Data['Universe'] = self.Data.Universe.fillna(0.0)
+        
 
         print("prepare data finished")
-
 
 
     def factor_process(self):
@@ -286,76 +278,91 @@ class MultiFactor():
 
     def rolling_predict(self):
         
+        print('进入滚动预测')
         # 保存结果在 dataframe 中 
-        predict_value = self.Data[['date','stkcd']]
-        predict_value['SVM'] = np.nan * np.ones(self.Data.shape[0])
-        predict_value['RandForest'] = np.nan * np.ones(self.Data.shape[0])
-        predict_date.set_index(['date','stkcd'])
+        result_data= pd.concat([self.Data[['date','stkcd']],self.Data.loc[:,'factor0':'factor4'], self.Data['return_bin'], self.Data['DropFlag']], axis=1)
+        result_data['ols'] = np.nan
+        result_data['SVM'] = np.nan 
+        result_data['RandForest'] = np.nan 
+        # result_data.set_index(['date','stkcd'])
         
         
         # 构造一个 numpy array格式的数据 存放 当前的 日期 
         DateArray = self.Data['date'].unique()
         
-        factorname_list = "factor0"
-        for i in range(1, len(self.factor_list)):
-            factorname_list = factorname_list + ", factor" + str(i) 
+        #factorname_list = "factor0"
+        #for i in range(1, len(self.factor_list)):
+            #factorname_list = factorname_list + ", factor" + str(i) 
+        # data_full_sample = pd.concat([self.Data[['date','stkcd']],self.Data.loc[:,'factor0':'factor4'], self.Data['return_bin'], self.Data['DropFlag']], axis=1)
+        #data_full_sample.set_index(['date', 'stkcd'])
         
+        print('完成准备整个样本数据，进入循环')
+        ii_count = 0
         for i_date in range(self.TEST_DAYS-self.rolling_period-self.predict_period):
+            ii_count += 1
+            print("loop" + str(ii_count))
             rolling_start_date = DateArray[i_date]
-            rolling_end_date = DateArrary[i_date+rolling_period-1]
-            predict_date = DateArray[i_date+rolling_period]
+            rolling_end_date = DateArray[i_date+self.rolling_period-1]
+            predict_date = DateArray[i_date+self.rolling_period]
         
             #在rolling period内构造样本 
             #条件：1.Date在 rollig period 内 
             #     2.DropFlag 是 False
             
-            data_in_sample = self.Data.loc[:,'factor0':'factor4']
-            data_in_sample[['date', 'stkcd']] = self.Data[['date','stkcd']]
-            # data_in_sample = self.Data['date, stkcd, return_bin, '+ factorname_list ]  \
-            #                 [self.Data.date>=rolling_start_date & self.Data.date<=rolling_end_date & ~(self.Data.DropFlag)] 
-            data_in_sample.set_index(['date', 'stkcd'])
+            data_in_sample = result_data[(result_data['date']>=rolling_start_date) & \
+                                              (result_data['date']<=rolling_end_date) & \
+                                              ~(result_data['DropFlag'])] 
             
             # i每一期 将90%的样本划分为训练集（train)，10%的样本划分为验证集 (cross-validation) -- 尝试阶段暂时不用 
-            # Xtrain, Xtest, ytrain, ytest = train_test_split(data_in_sample.loc[factorname_list],data_in_sample.loc['return_bin'], \
+            # Xtrain, Xtest, ytrain, ytest = train_test_split(data_in_sample.loc[:,'factor0':'factor4'],data_in_sample.loc[:,'return_bin'], \
             #                                             test_size = self.percent_cv, random_state = self.seed )
             
             # 在 predict period 内构造预测数据：
             # 条件：1.Date = predict当天日期 
             #      2.DropFlag 是 False
-            data_predict = self.Data['date, stkcd, return_bin, '+ factorname_list ] \
-                           [self.Data.date==predict_date & ~(self.Data.DropFlag)]
-            data_predict.set_index(['date, stkcd'])
-            # 挑选predict date 最容易上涨的50只或者100支股票 等权配置资产
-            #  当天开盘买入，第二天开盘卖出，对应的是当天的return  -- 数据刚好对整齐 
+            data_predict = result_data[(result_data.date==predict_date) & \
+                                            ~(result_data.DropFlag)]
             
-            
-            Xtrain = data_in_sample[factorname_list]
-            ytrain = data_in_sample['return_bin']
-            Xpredict = data_predict[factorname_list]
-            
-            # 训练样本
-            #  1. SVM 测试代码
-   
-            #from sklearn import svm
-            # 核函数选择 高斯函数（非线性）；惩罚系数 = 0.01
-            model = svm.SVC(kernel = "rbf", C = 0.01)
-            model.fit(Xtrain, ytrain)
-            
-            ##  2. random forest 模型
-            ##from sklearn.tree import DecisionTreeClassifier
-            ##from sklearn.ensemble import BaggingClassifier
-            ##from sklearn.ensemble import RandomForestClassifier
-            #tree = DecisionTreeClassifier()
-            #bag = BaggingClassifier(tree, n_estimators= 100, max_samples = 0.9, random_state = self.seed)
-            #model = RandomForestClassifier(n_estimators = 100)
-            #model.fit(Xtrain, ytrain)
-            
-            yfit_train = model.decision_function(Xtrain)
-            yfit_predict = model.predict(Xpredict)
-
-            
-            
-            
-            return predict_value 
+            if data_predict.shape[0]>0:  # 增加一个判断是否在预测当日有全部Factor=0
+                # data_predict.set_index(['date', 'stkcd'])
+                # 挑选predict date 最容易上涨的50只或者100支股票 等权配置资产
+                #  当天开盘买入，第二天开盘卖出，对应的是当天的return  -- 数据刚好对整齐 
+                
+                
+                Xtrain = data_in_sample.loc[:,'factor0':'factor4']
+                ytrain = data_in_sample['return_bin']
+                Xpredict = data_predict.loc[:,'factor0':'factor4']
+                
+                #Xtrain = Xtrain.dropna()
+                
+                #0. Lienear regression
+                
+                from sklearn import linear_model
+                model = linear_model.LinearRegression(fit_intercept=True)
+                
+                #  1. SVM 测试代码
+                #from sklearn import svm
+                # 核函数选择 高斯函数（非线性）；惩罚系数 = 0.01
+                #model = svm.SVC(kernel = "linear", C = 0.01)
+                
+                #print('开始估计模型')
+                #time_start = time.time()
+                model.fit(Xtrain, ytrain)
+                #time_end = time.time()
+                #print('SVM Model Fit Time：', int(time_end - time_start),'s')
+                ##  2. random forest 模型
+        
+                #tree = DecisionTreeClassifier()
+                #bag = BaggingClassifier(tree, n_estimators= 100, max_samples = 0.9, random_state = self.seed)
+                #model = RandomForestClassifier(n_estimators = 100)
+                #model.fit(Xtrain, ytrain)
+                
+                #yfit_train = model.decision_function(Xtrain)
+                yfit_predict = pd.DataFrame(model.predict(Xpredict), index = Xpredict.index)
+        
+                # 将结果保存到文件中输出 
+                result_data.ols[data_predict.index] = yfit_predict.values[:,0]
+                
+        return result_data 
             
             
