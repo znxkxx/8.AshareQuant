@@ -290,7 +290,11 @@ class UserWrite(Execution):
     
     # -------------------------------------------    
     # function 14: ts_rank
+<<<<<<< HEAD
     def _ts_rank(self , data, asce = False):
+=======
+    def _ts_rank(self , data):
+>>>>>>> Add-GJAlpha
         '''
         对应Formularic 101 Alpha中的ts_rank(x)函数
         功能：给出每只股票在过去d天内的排名，并且用总天数做一个调整，使用pandas的rank()函数计算
@@ -300,6 +304,7 @@ class UserWrite(Execution):
         TO-DO: 增加 missing value 容错处理
         '''
         df_data = pd.DataFrame(data)
+<<<<<<< HEAD
         df_data_rank = df_data.rank(axis=0 , ascending=asce)
         # pd.rank()计算每个截面时点上每只股票的排序(总数标准化，降序排列，排名数字小，对应数值越大）
         
@@ -307,6 +312,15 @@ class UserWrite(Execution):
         ts_rank = (((df_data_rank.values) / np.nanmax((df_data_rank.values) , axis=0))[T-1:T , :])
 
         return ts_rank       
+=======
+        df_data_rank = df_data.rank(axis=0 , ascending=False)
+        # pd.rank()计算每个截面时点上每只股票的排序(总数标准化，降序排列，排名数字小，对应数值越大）
+        
+        T = data.shape[0]
+        ts_rank = (((df_data_rank.values) / np.nanmax((df_data_rank.values) , axis=0))[T-1:T , :]) 
+        # 注意 Slicing返回1个 1xN的矩阵
+        return ts_rank        
+>>>>>>> Add-GJAlpha
     # -------------------------------------------
 
     
