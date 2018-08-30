@@ -7,4 +7,4 @@
 *.pdf 
 
 # office文件
-*.doc*, *.xls*, *.ppt*
+*.doc*, *.xls*, *.ppt*, *.csv
