@@ -30,3 +30,6 @@ from MultiFactor import MultiFactor
 test = MultiFactor()
 test.prepare_data()
 
+test.factor_process()
+test.return_process()
+test.construct_panel()
