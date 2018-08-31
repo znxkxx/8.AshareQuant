@@ -19,8 +19,8 @@ import sklearn
 from sklearn import metrics
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
-from sklearn.cross_validation import train_test_split
 
+from sklearn import linear_model
 from sklearn import svm
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import BaggingClassifier
@@ -66,17 +66,7 @@ class MultiFactor():
 
     -------------------------------------------------------------------------------
      输出
-      - 1. 交叉验证集合上的预测准确率
-          a. SVM
-          b. random forest
-          c. regression
-          ....
-
-      - 2. 滚动验证的准确率
-          a. SVM
-          b. random forest
-          c. regression
-          ....
+       - 滚动预测得到的alpha数值，存放在目录 path_result_data 中 
     '''
     def __init__(self):
 
@@ -84,11 +74,11 @@ class MultiFactor():
         # self.path_data = "D:\\quantpy\\quant_option_2\\code\\Backtest\\output\\"
         # self.path_result_data = "D:\\quantpy\\quant_option_2\\code\\Backtest\\RegTest\\"
 
-        self.path_data = "E:/4.Project/Current/004-AshareQuant/002-data/"
-        self.path_result_data = "E:/4.Project/Current/004-AshareQuant/003-result_data/"
+        #self.path_data = "E:/4.Project/Current/004-AshareQuant/002-data/"
+        #self.path_result_data = "E:/4.Project/Current/004-AshareQuant/003-result/"
 
-        #self.path_data = "/Users/xinxu/Documents/8.AshareQuant/002-data/"
-        #self.path_result_data = "/Users/xinxu/Documents/8.AshareQuant/003-result_data/"
+        self.path_data = "/Users/xinxu/Documents/8.AshareQuant/002-data/"
+        self.path_result_data = "/Users/xinxu/Documents/8.AshareQuant/003-result/"
         
         self.file_stock_ret = "Stock_Return.csv"
         self.file_HS300_ret = "HS300_Return.csv"
@@ -230,9 +220,7 @@ class MultiFactor():
         
         # 行业中性化 to-do 
         
-        # 因子序数
-        
-        # 因子序数化 （可选）
+        # 因子序数化 to-do（可选）
         
         print('因子数据处理完毕')
 
@@ -277,13 +265,17 @@ class MultiFactor():
 
 
     def rolling_predict(self):
-        
+        '''
+        实现滚动预测功能：
+         用rolling_period(100天)的数据作为训练集，预测第101天的factor数值 
+         后续用第101天
+        '''
         print('进入滚动预测')
         # 保存结果在 dataframe 中 
         result_data= pd.concat([self.Data[['date','stkcd']],self.Data.loc[:,'factor0':'factor4'], self.Data['return_bin'], self.Data['DropFlag']], axis=1)
         result_data['ols'] = np.nan
-        result_data['SVM'] = np.nan 
-        result_data['RandForest'] = np.nan 
+        result_data['svm'] = np.nan 
+        result_data['rdmf'] = np.nan 
         # result_data.set_index(['date','stkcd'])
         
         
@@ -313,10 +305,6 @@ class MultiFactor():
                                               (result_data['date']<=rolling_end_date) & \
                                               ~(result_data['DropFlag'])] 
             
-            # i每一期 将90%的样本划分为训练集（train)，10%的样本划分为验证集 (cross-validation) -- 尝试阶段暂时不用 
-            # Xtrain, Xtest, ytrain, ytest = train_test_split(data_in_sample.loc[:,'factor0':'factor4'],data_in_sample.loc[:,'return_bin'], \
-            #                                             test_size = self.percent_cv, random_state = self.seed )
-            
             # 在 predict period 内构造预测数据：
             # 条件：1.Date = predict当天日期 
             #      2.DropFlag 是 False
@@ -335,34 +323,41 @@ class MultiFactor():
                 
                 #Xtrain = Xtrain.dropna()
                 
-                #0. Lienear regression
+                # 1. Lienear regression
+                #
+                model_ols = linear_model.LinearRegression(fit_intercept=True)
+                model_ols.fit(Xtrain, ytrain)
                 
-                from sklearn import linear_model
-                model = linear_model.LinearRegression(fit_intercept=True)
-                
-                #  1. SVM 测试代码
-                #from sklearn import svm
+                # 2. SVM 测试代码
                 # 核函数选择 高斯函数（非线性）；惩罚系数 = 0.01
-                #model = svm.SVC(kernel = "linear", C = 0.01)
-                
-                #print('开始估计模型')
-                #time_start = time.time()
-                model.fit(Xtrain, ytrain)
-                #time_end = time.time()
-                #print('SVM Model Fit Time：', int(time_end - time_start),'s')
-                ##  2. random forest 模型
-        
+                #model_svm = svm.SVC(kernel = "linear", C = 0.01)
+                #model_svm.fit(Xtrain, ytrain)
+                               
+                # 3. random forest 模型
+                #print("Xtrain.shape", Xtrain.shape)
                 #tree = DecisionTreeClassifier()
                 #bag = BaggingClassifier(tree, n_estimators= 100, max_samples = 0.9, random_state = self.seed)
-                #model = RandomForestClassifier(n_estimators = 100)
-                #model.fit(Xtrain, ytrain)
+                #model_rdmf = RandomForestClassifier(n_estimators = 100)
+                #model_rdmf.fit(Xtrain, ytrain)
                 
-                #yfit_train = model.decision_function(Xtrain)
-                yfit_predict = pd.DataFrame(model.predict(Xpredict), index = Xpredict.index)
-        
+                yfit_predict_ols = pd.DataFrame(model_ols.predict(Xpredict), index = Xpredict.index)
+                #yfit_predict_svm = pd.DataFrame(model_svm.predict(Xpredict), index = Xpredict.index)
+                # yfit_predict_rdmf = pd.DataFrame(model_rdmf.predict(Xpredict), index = Xpredict.index)
+                
                 # 将结果保存到文件中输出 
-                result_data.ols[data_predict.index] = yfit_predict.values[:,0]
-                
-        return result_data 
+                result_data.ols[data_predict.index] = yfit_predict_ols.values[:,0]
+                #result_data.svm[data_predict.index] = yfit_predict_svm.values[:,0]
+                #result_data.rdmf[data_predict.index] = yfit_predict_rdmf.values[:,0]
             
-            
+        # factor：numpy格式，输出的是 ols/svm/random forest下预测的factor数值 
+        factor_ols = result_data.set_index(['date','stkcd'])['ols'].unstack().values
+        np.savetxt(self.path_result_data + 'MultiGeneratedFactor_ols.csv', factor_ols, delimiter=',')
+
+        #factor_svm = result_data.set_index(['date','stkcd'])['svm'].unstack().values
+        #np.savetxt(self.path_result_data + 'MultiGeneratedFactor_svm.csv', factor_svm, delimiter=',')
+
+        #factor_rdmf = result_data.set_index(['date','stkcd'])['rdmf'].unstack().values
+        #np.savetxt(self.path_result_data + 'MultiGeneratedFactor_rdmf.csv', factor_rdmf, delimiter=',')
+    
+        
+        
